@@ -168,8 +168,6 @@ class GCSArtifactRepository(ArtifactRepository, MultipartUploadMixin):
             blob_path = result.name[len(artifact_path) + 1 :]
             infos.append(FileInfo(blob_path, False, result.size))
         return sorted(infos, key=lambda f: f.path)
-
-
     def _list_folders(self, bkt, prefix, artifact_path):
         results = bkt.list_blobs(prefix=prefix, delimiter="/")
         dir_paths = set()

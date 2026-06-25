@@ -78,6 +78,37 @@ def test_list_artifacts(mock_client):
 
 
 @pytest.mark.parametrize("dir_name", ["model", "model/"])
+def test_list_artifacts_skips_directory_markers(mock_client):
+    artifact_root_path = "/experiment_id/run_id/"
+    repo = GCSArtifactRepository("gs://test_bucket" + artifact_root_path, client=mock_client)
+
+    # Real file object
+    obj_mock = mock.Mock()
+    file_path = "file"
+    obj_mock.configure_mock(name=artifact_root_path + file_path, size=1)
+
+    # Directory marker object (0-byte blob ending with "/")
+    dir_marker_mock = mock.Mock()
+    dir_marker_mock.configure_mock(
+        name=artifact_root_path + "some_dir/", size=0
+    )
+
+    dir_mock = mock.Mock()
+    dir_mock.configure_mock(prefixes=())
+
+    mock_results = mock.MagicMock()
+    mock_results.configure_mock(pages=[dir_mock])
+    mock_results.__iter__.return_value = [obj_mock, dir_marker_mock]
+
+    mock_client.bucket.return_value.list_blobs.return_value = mock_results
+
+    artifacts = repo.list_artifacts(path=None)
+
+    # Directory marker should be excluded, only real file should appear
+    assert len(artifacts) == 1
+    assert artifacts[0].path == file_path
+    assert artifacts[0].is_dir is False
+    assert artifacts[0].file_size == 1
 def test_list_artifacts_with_subdir(mock_client, dir_name):
     artifact_root_path = "/experiment_id/run_id/"
     repo = GCSArtifactRepository("gs://test_bucket" + artifact_root_path, client=mock_client)
