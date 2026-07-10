@@ -77,7 +77,6 @@ def test_list_artifacts(mock_client):
     assert artifacts[1].file_size is None
 
 
-@pytest.mark.parametrize("dir_name", ["model", "model/"])
 def test_list_artifacts_skips_directory_markers(mock_client):
     artifact_root_path = "/experiment_id/run_id/"
     repo = GCSArtifactRepository("gs://test_bucket" + artifact_root_path, client=mock_client)
@@ -88,10 +87,10 @@ def test_list_artifacts_skips_directory_markers(mock_client):
     obj_mock.configure_mock(name=artifact_root_path + file_path, size=1)
 
     # Directory marker object (0-byte blob ending with "/")
+    # These are created by some GCS-compatible backends and should not
+    # be treated as regular files in artifact listings.
     dir_marker_mock = mock.Mock()
-    dir_marker_mock.configure_mock(
-        name=artifact_root_path + "some_dir/", size=0
-    )
+    dir_marker_mock.configure_mock(name=artifact_root_path + "some_dir/", size=0)
 
     dir_mock = mock.Mock()
     dir_mock.configure_mock(prefixes=())
@@ -108,6 +107,10 @@ def test_list_artifacts_skips_directory_markers(mock_client):
     assert len(artifacts) == 1
     assert artifacts[0].path == file_path
     assert artifacts[0].is_dir is False
+    assert artifacts[0].file_size == 1
+
+
+@pytest.mark.parametrize("dir_name", ["model", "model/"])
 def test_list_artifacts_with_subdir(mock_client, dir_name):
     artifact_root_path = "/experiment_id/run_id/"
     repo = GCSArtifactRepository("gs://test_bucket" + artifact_root_path, client=mock_client)
@@ -156,8 +159,6 @@ def test_log_artifact(mock_client, tmp_path):
     fpath = d.joinpath("test.txt")
     fpath = str(fpath)
 
-    # This will call isfile on the code path being used,
-    # thus testing that it's being called with an actually file path
     def custom_isfile(*args, **kwargs):
         if args:
             return os.path.isfile(args[0])
@@ -279,14 +280,6 @@ def test_download_artifacts_downloads_expected_content(mock_client, tmp_path):
     mock_empty_results.__iter__.return_value = []
 
     def get_mock_listing(prefix, **kwargs):
-        """
-        Produces a mock listing that only contains content if the
-        specified prefix is the artifact root. This allows us to mock
-        `list_artifacts` during the `_download_artifacts_into` subroutine
-        without recursively listing the same artifacts at every level of the
-        directory traversal.
-        """
-
         prefix = os.path.join("/", prefix)
         if os.path.abspath(prefix) == os.path.abspath(artifact_root_path):
             return mock_populated_results
@@ -316,9 +309,7 @@ def test_download_artifacts_downloads_expected_content(mock_client, tmp_path):
         side_effect=mkfile,
     )
 
-    # Ensure that the root directory can be downloaded successfully
     repo.download_artifacts("")
-    # Ensure that the `mkfile` side effect copied all of the download artifacts into `tmpdir`
     dir_contents = os.listdir(tmp_path)
     assert file_path_1 in dir_contents
     assert file_path_2 in dir_contents
@@ -340,14 +331,6 @@ def test_delete_artifacts(mock_client):
     obj_mock.configure_mock(**attrs)
 
     def get_mock_listing(prefix, **kwargs):
-        """
-        Produces a mock listing that only contains content if the
-        specified prefix is the artifact root. This allows us to mock
-        `list_artifacts` during the `_download_artifacts_into` subroutine
-        without recursively listing the same artifacts at every level of the
-        directory traversal.
-        """
-
         if hasattr(obj_mock, "name") and hasattr(obj_mock, "size"):
             mock_results = mock.MagicMock()
             mock_results.__iter__.return_value = [obj_mock]
@@ -409,8 +392,6 @@ def test_create_multipart_upload(mock_client):
         ),
     )
 
-    # mock the XML API response of initiate multipart upload
-    # see https://cloud.google.com/storage/docs/xml-api/post-object-multipart#example
     upload_id = "some_upload_id"
     resp = mock.Mock(status_code=200)
     resp.text = f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -461,7 +442,6 @@ def test_complete_multipart_upload(mock_client):
         ),
     )
 
-    # See https://cloud.google.com/storage/docs/xml-api/post-object-complete
     expected_payload = (
         b"<CompleteMultipartUpload>"
         b"<Part><PartNumber>1</PartNumber>"
