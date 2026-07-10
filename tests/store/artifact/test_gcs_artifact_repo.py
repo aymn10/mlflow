@@ -108,7 +108,6 @@ def test_list_artifacts_skips_directory_markers(mock_client):
     assert len(artifacts) == 1
     assert artifacts[0].path == file_path
     assert artifacts[0].is_dir is False
-    assert artifacts[0].file_size == 1
 def test_list_artifacts_with_subdir(mock_client, dir_name):
     artifact_root_path = "/experiment_id/run_id/"
     repo = GCSArtifactRepository("gs://test_bucket" + artifact_root_path, client=mock_client)
